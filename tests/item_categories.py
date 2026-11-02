@@ -42,9 +42,9 @@ require __DIR__ . '/' . $req['page'];
 def make_app(tmp_name, seed_categories):
     """Copy the app into tmp_name and build a synthetic database.
 
-    seed_categories=False leaves the database exactly like the bundled one
-    (no ItemCategories table, no Items.CategoryID column) so the migration in
-    config/db.php has to do its work on first page load.
+    seed_categories=False simulates a genuine pre-feature install: the
+    bundled database now ships the ItemCategories table, so we drop it here
+    to make the migration in config/db.php create and seed it from scratch.
     """
     tmp = tempfile.mkdtemp(prefix=tmp_name)
     app = Path(tmp)
@@ -60,6 +60,10 @@ def make_app(tmp_name, seed_categories):
     with sqlite3.connect(database) as db:
         for (sql,) in schema:
             db.execute(sql)
+        if not seed_categories:
+            # The bundled DB has since gained this table; remove it so the
+            # "fresh install" case really has no ItemCategories table.
+            db.execute('DROP TABLE IF EXISTS ItemCategories')
         # The bundled database predates projects: build the same schema the
         # migration in config/db.php would add on first page load.
         db.execute('''CREATE TABLE IF NOT EXISTS Projects (
@@ -76,6 +80,9 @@ def make_app(tmp_name, seed_categories):
             if 'ProjectID' not in cols:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN ProjectID INTEGER')
         if seed_categories:
+            # The bundled DB now ships this table; rebuild it explicitly so
+            # the "categories already existed" test starts from a known seed.
+            db.execute('DROP TABLE IF EXISTS ItemCategories')
             db.execute('''CREATE TABLE ItemCategories (
                 CategoryID INTEGER PRIMARY KEY AUTOINCREMENT,
                 CategoryName TEXT NOT NULL,

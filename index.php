@@ -68,12 +68,12 @@ if ($scope === '__unassigned__') {
   </div>
   <table id="balTable">
     <thead>
-      <tr><th>Item ID</th><th>Item</th><th>Unit</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th class="num">Received</th><th class="num">Released</th><th class="num">Balance</th><th>Status</th></tr>
+      <tr><th>Item #</th><th>Item</th><th>Unit</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th class="num">Received</th><th class="num">Released</th><th class="num">Balance</th><th>Status</th></tr>
     </thead>
     <tbody>
       <?php foreach ($balances as $b): ?>
         <tr>
-          <td class="muted"><?= h($b['ItemID']) ?></td>
+          <td class="muted"><?= h($b['ItemCode'] ?? '') ?></td>
           <td><?= h($b['ItemName']) ?><?php if($b['ItemNameLocal']): ?><div class="muted"><?= h($b['ItemNameLocal']) ?></div><?php endif; ?></td>
           <td><?= h($b['Unit']) ?></td>
           <?php if (is_admin()): ?><td class="muted"><?= h(office_label($b['Office'] ?? null)) ?></td><?php endif; ?>

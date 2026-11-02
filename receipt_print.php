@@ -15,7 +15,7 @@ if (!$receipt || !can_access_office($receipt['Office'] ?? null)) {
 }
 
 $lines = db()->prepare('
-    SELECT rd.*, i.ItemName, i.ItemNameLocal, i.Description, i.Unit
+    SELECT rd.*, i.ItemCode, i.ItemName, i.ItemNameLocal, i.Description, i.Unit
     FROM StockReceiptDetails rd
     JOIN Items i ON i.ItemID = rd.ItemID
     WHERE rd.ReceiptID = ?
@@ -126,16 +126,17 @@ $lines = $lines->fetchAll();
     <table class="items">
       <thead>
         <tr>
-          <th>#</th><th>Item Name</th><th>Item Name (Dari)</th><th>Description</th><th>Unit</th><th class="num">Quantity</th>
+          <th>#</th><th>Item #</th><th>Item Name</th><th>Item Name (Dari)</th><th>Description</th><th>Unit</th><th class="num">Quantity</th>
         </tr>
       </thead>
       <tbody>
         <?php if (!$lines): ?>
-          <tr><td colspan="6">No items recorded for this GRN.</td></tr>
+          <tr><td colspan="7">No items recorded for this GRN.</td></tr>
         <?php endif; ?>
         <?php foreach ($lines as $i => $line): ?>
           <tr>
             <td><?= $i + 1 ?></td>
+            <td><?= h($line['ItemCode'] ?? '') ?></td>
             <td><?= h($line['ItemName']) ?></td>
             <td><?= $line['ItemNameLocal'] ? h($line['ItemNameLocal']) : '—' ?></td>
             <td><?= $line['Description'] ? h($line['Description']) : '—' ?></td>

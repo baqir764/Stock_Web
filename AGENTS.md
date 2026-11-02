@@ -31,7 +31,7 @@ without being asked again.
   owner wants to keep using the same session and the same PR for follow-up
   work.
 - All work happens on the session's own branch (for this session:
-  `arena/01a0be58-stock-web`). Never switch to, create, or push to a different
+  `arena/30d4f517-stock-web`). Never switch to, create, or push to a different
   branch.
 - Local syncing is done **in Git Gui**, never by merging the PR on GitHub:
   1. In Git Gui, click **Remote → Fetch from → origin**.
@@ -65,6 +65,8 @@ without being asked again.
   `tests/projects.py` — run as `python3 tests/projects.py [path/to/php]`.
 - Regression test for the item Categories layer:
   `tests/item_categories.py` — run as `python3 tests/item_categories.py [path/to/php]`.
+- Regression test for the single item number:
+  `tests/item_number.py` — run as `python3 tests/item_number.py [path/to/php]`.
 - They all need PHP with PDO SQLite. The agent runs them in the sandbox; the owner
   is never asked to run them.
 - Also lint changed PHP files (`php -l`) and smoke-load the main pages to be
@@ -74,6 +76,31 @@ without being asked again.
 ## 6. Business rules that must not regress
 
 These were deliberate decisions. Keep them unless the owner says otherwise.
+
+- **One item number (`Items.ItemCode`, shown as `Item #`)** — every item has
+  exactly ONE identifier that people see, write on a bin label and type into
+  a spreadsheet. Format: `P1-MO-0001` (project 1, Main Office),
+  `P1-PO-0001` (project 1, Provincial Office), `NP-MO-0001` /
+  `NP-PO-0001` ("No project"). Each (project, office) pair owns an
+  independent sequence. It is auto-assigned when the item is created,
+  protected by a UNIQUE index, and **never regenerated** — not by an edit,
+  not by an import, not by a later migration. If an item's office or project
+  is corrected afterwards, its number stays the one it was created with
+  (like a SKU) while the Office/Project columns show where it now sits.
+  - `Items.ItemID` is only the hidden technical primary key for
+    `StockReceiptDetails` / `StockReleaseDetails`. Never print it, never
+    export it, never put it in a spreadsheet, never ask anyone to type it.
+  - `Items.ItemNo` (the old Excel numbers) is retired. It stays as a dormant
+    column so an older backup still restores cleanly, but no page reads or
+    writes it.
+  - Every list, form, document view/print, report, export and import uses
+    that single `Item #`. Exports write exactly one `Item #` column; imports
+    match items by `Item #` (never by `ItemID`).
+  - All schema work for this lives in `stockapp_item_codes()` in
+    `config/db.php`. The one-time conversion is deterministic (ordered by
+    project, office, ItemID), so restoring an old backup cannot shuffle
+    anyone's numbers. Helpers: `item_code_prefix()`, `next_item_code()`,
+    `normalize_item_code()`.
 
 - **Printed subject (`StockReleases.Subject`)** — the line printed at the top
   of a stock card. It is **editable on the stock card form for new, existing

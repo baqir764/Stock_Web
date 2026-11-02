@@ -102,11 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['empty_all_items'])) {
 $pageTitle = 'Items';
 require __DIR__ . '/includes/header.php';
 
-// Sorted by the new per-office ID series (MO-01, MO-02, … then PO-01,
-// PO-02, …) rather than by name — the numeric part of ItemCode is pulled
-// out and cast to a number so "MO-9" sorts before "MO-10" once an office
-// passes 99 items, instead of a plain string sort putting "MO-10" first.
-$codeOrder = 'i.Office, CAST(SUBSTR(i.ItemCode, INSTR(i.ItemCode, \'-\') + 1) AS INTEGER)';
+// Sorted by the single public Item # (P1-MO-0001 … NP-PO-0090) rather than
+// by name or by the hidden internal ItemID. The sequence is zero-padded, so
+// a plain string sort is already the correct numeric order.
+$codeOrder = 'i.ItemCode';
 [$pSql, $pParams] = project_condition('i.ProjectID', $project);
 [$cSql, $cParams] = category_condition('i.CategoryID', $category);
 
@@ -192,12 +191,11 @@ function item_stock_status(array $it): array {
     <input class="search-box" id="itemSearch" placeholder="Search items…" onkeyup="filterTable('itemSearch','itemTable')">
   </div>
   <table id="itemTable">
-    <thead><tr><th>Item No</th><th>Item Id</th><th>Item</th><th>Description</th><th>Unit</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th>Project</th><th>Category</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Item #</th><th>Item</th><th>Description</th><th>Unit</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th>Project</th><th>Category</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
     <tbody>
       <?php foreach ($items as $it): ?>
         <?php [$statusLabel, $statusClass] = item_stock_status($it); ?>
         <tr>
-          <td><?= h($it['ItemNo'] ?? '') ?></td>
           <td><?= h($it['ItemCode'] ?? '') ?></td>
           <td><?= h($it['ItemName']) ?><?php if($it['ItemNameLocal']): ?><div class="muted"><?= h($it['ItemNameLocal']) ?></div><?php endif; ?></td>
           <td class="muted"><?= h($it['Description']) ?></td>

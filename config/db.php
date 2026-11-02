@@ -30,6 +30,77 @@ function db(): PDO {
     return $pdo;
 }
 
+// ==================== The ONE item number ("Item #") ====================
+// Warehousing rule: an item has exactly ONE number people see, write on a
+// bin label and type into a spreadsheet. It belongs to one project AND one
+// office, so each (project, office) pair owns an independent sequence:
+//
+//   P1-MO-0001   project 1, Main Office
+//   P1-PO-0001   project 1, Provincial Office
+//   NP-MO-0001   No project, Main Office ("NP" = No Project)
+//   NP-PO-0001   No project, Provincial Office
+//
+// The integer Items.ItemID stays ONLY as the database's technical primary
+// key for StockReceiptDetails / StockReleaseDetails (8,878+ rows point at
+// it). It is never printed, never typed and never exported. Items.ItemNo
+// (the old Excel numbers) is retired: kept as a dormant column so an older
+// backup still restores cleanly, but no page reads or writes it any more.
+// See also next_item_code() / normalize_item_code() in includes/functions.php.
+
+function item_code_prefix($projectId, ?string $office): string {
+    $tag = ($projectId === null || $projectId === '') ? 'NP' : 'P' . (int)$projectId;
+    return $tag . '-' . ($office === 'main' ? 'MO' : 'PO');
+}
+
+// One-time, deterministic conversion of every legacy item number (old
+// "MO-01" / "PO-01" codes, blank codes, and the retired ItemNo values) to
+// the single Item # format above. Deterministic means it is safe to run
+// again: ordering by project, office then ItemID always produces the same
+// numbers, so restoring an old backup can never shuffle anyone's codes.
+// Also creates the UNIQUE index that makes the business key a real database
+// constraint instead of just a convention in PHP.
+function stockapp_item_codes(PDO $pdo): void {
+    $rows = $pdo->query('SELECT ItemID, ItemCode, ProjectID, Office FROM Items ORDER BY COALESCE(ProjectID, 0), Office, ItemID')->fetchAll();
+
+    $needsConversion = false;
+    foreach ($rows as $row) {
+        if (!preg_match('/^(?:P\d+|NP)-(?:MO|PO)-\d{4,}$/', (string)($row['ItemCode'] ?? ''))) {
+            $needsConversion = true;
+            break;
+        }
+    }
+
+    if ($needsConversion) {
+        $pdo->beginTransaction();
+        try {
+            // Two phases. Clearing first means the UNIQUE index (if it was
+            // already created on a previous run) never sees two rows briefly
+            // holding the same number while the new ones are being assigned.
+            $pdo->exec('UPDATE Items SET ItemCode = NULL');
+            $upd = $pdo->prepare('UPDATE Items SET ItemCode = ? WHERE ItemID = ?');
+            $seq = [];
+            foreach ($rows as $row) {
+                $prefix = item_code_prefix($row['ProjectID'], $row['Office']);
+                $seq[$prefix] = ($seq[$prefix] ?? 0) + 1;
+                $upd->execute([
+                    $prefix . '-' . str_pad((string)$seq[$prefix], 4, '0', STR_PAD_LEFT),
+                    $row['ItemID'],
+                ]);
+            }
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    // Partial index: NULL/blank rows are allowed (they are fixed on the next
+    // connection), but two real item numbers can never be the same.
+    $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS UQ_Items_ItemCode
+                ON Items(ItemCode)
+                WHERE ItemCode IS NOT NULL AND TRIM(ItemCode) <> ''");
+}
+
 // Idempotent, self-healing schema migration — runs on every connection but
 // only ever touches something the first time it's missing, so it's safe to
 // ship as part of a normal update rather than needing a separate manual step.
@@ -196,23 +267,14 @@ function stockapp_migrate(PDO $pdo): void {
             $pdo->exec('ALTER TABLE Items ADD COLUMN LowStockLevel REAL');
         }
 
-        // ItemCode — a human-friendly, per-office item ID like "MO-01" (Main
-        // Office) or "PO-01" (Provincial Office), separate from the internal
-        // auto-increment ItemID. Each office has its own independent
-        // sequence (see office_code()/next_item_code() in functions.php).
-        // Backfilled once, in ItemID order per office, so items created
-        // before this column existed get a stable code too rather than
-        // being left blank.
+        // ItemCode is now the ONE public "Item #". It is just a column here —
+        // the format, the one-time conversion of old numbers and the UNIQUE
+        // constraint all live in stockapp_item_codes() at the end of this
+        // migration, after ProjectID and Office are guaranteed to exist.
+        // The retired ItemNo column is deliberately left in place (dormant)
+        // so restoring an older backup still works; nothing reads it.
         if (!in_array('ItemCode', $existingItemCols, true)) {
             $pdo->exec('ALTER TABLE Items ADD COLUMN ItemCode TEXT');
-            $rows = $pdo->query('SELECT ItemID, Office FROM Items ORDER BY Office, ItemID')->fetchAll();
-            $seq = [];
-            $updCode = $pdo->prepare('UPDATE Items SET ItemCode = ? WHERE ItemID = ?');
-            foreach ($rows as $row) {
-                $prefix = office_code($row['Office'] ?? null);
-                $seq[$prefix] = ($seq[$prefix] ?? 0) + 1;
-                $updCode->execute([$prefix . '-' . str_pad((string)$seq[$prefix], 2, '0', STR_PAD_LEFT), $row['ItemID']]);
-            }
         }
     }
 
@@ -225,4 +287,9 @@ function stockapp_migrate(PDO $pdo): void {
         $pdo->prepare('INSERT INTO Users (Username, PasswordHash, FullName, Role, MustChangePassword) VALUES (?,?,?,?,1)')
             ->execute(['admin', $hash, 'Administrator', 'admin']);
     }
+
+    // Last, once ProjectID/Office/ItemCode all exist: give every item its one
+    // public number and enforce uniqueness. See the block at the top of this
+    // file for the format and the why.
+    stockapp_item_codes($pdo);
 }

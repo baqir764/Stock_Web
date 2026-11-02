@@ -12,8 +12,15 @@ function items_row_to_fields(array $row, array $keyMap): ?array {
     };
     $name = $get('itemname');
     if ($name === '') return null;
+    // Exactly one identifier in a file: the public "Item #". header_key()
+    // turns "Item #" into the bare key "item"; the other spellings are
+    // accepted so hand-made and older sheets still import.
+    $itemNo = '';
+    foreach (['item', 'itemno', 'itemnumber', 'itemcode', 'itemid'] as $key) {
+        if (isset($keyMap[$key])) { $itemNo = $get($key); break; }
+    }
     return [
-        'item_id' => $get('itemid'),
+        'item_no' => $itemNo,
         'name' => $name,
         'local' => $get('itemnamedari') ?: $get('itemnamelocal'),
         'desc' => $get('description'),
@@ -35,6 +42,17 @@ if (is_admin()) {
     $importOffice = array_key_exists($importOffice, office_options()) ? $importOffice : null;
 } else {
     $importOffice = current_user()['Office'] ?? null;
+}
+
+// An item number belongs to one (project, office) pair, so a NEW item must
+// know its project. Existing items are only matched — their number and
+// their project are never rewritten (see the twin rule in item_form.php).
+$importProjectRaw = trim((string)($_POST['project_id'] ?? ''));
+$importProject = null;
+if ($importProjectRaw !== '' && $importProjectRaw !== 'none' && ctype_digit($importProjectRaw)) {
+    $chk = db()->prepare('SELECT ProjectID FROM Projects WHERE ProjectID = ?');
+    $chk->execute([(int)$importProjectRaw]);
+    $importProject = (int)$chk->fetchColumn() ?: null;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !csrf_verify()) {
@@ -127,19 +145,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
             $pdo = db();
             // Scoped to $importOffice so a row can only match/update an item
             // that's already in the target office — never one belonging to
-            // the other office, even if the IDs or names happen to collide.
-            $existingById = array_column(all_items($importOffice), null, 'ItemID');
+            // the other office, even if names happen to collide. The ONE
+            // public number is the only identifier read from the file; the
+            // internal ItemID never appears in a spreadsheet.
+            $existingByNo = [];
             $existingByName = [];
-            foreach ($existingById as $it) $existingByName[strtolower($it['ItemName'])] = (int)$it['ItemID'];
+            foreach (all_items($importOffice) as $it) {
+                $id = (int)$it['ItemID'];
+                $existingByName[strtolower($it['ItemName'])] = $id;
+                $key = normalize_item_code($it['ItemCode'] ?? null);
+                if ($key !== '') $existingByNo[$key] = $id;
+            }
 
             $created = 0;
             $updated = 0;
             foreach ($records as $rec) {
-                $itemId = ($rec['item_id'] !== '' && ctype_digit($rec['item_id'])) ? (int)$rec['item_id'] : null;
-                if ($itemId !== null && !isset($existingById[$itemId])) $itemId = null;
+                $itemNo = normalize_item_code($rec['item_no']);
+                $itemId = $itemNo !== '' ? ($existingByNo[$itemNo] ?? null) : null;
                 if ($itemId === null) {
                     $key = strtolower($rec['name']);
-                    if (isset($existingByName[$key])) $itemId = $existingByName[$key];
+                    $itemId = $existingByName[$key] ?? null;
                 }
 
                 $openingIn = $rec['opening_in'] !== '' ? (float)$rec['opening_in'] : 0;
@@ -150,15 +175,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                         ->execute([$rec['name'], $rec['local'], $rec['desc'], $rec['unit'], $openingIn, $openingOut, $itemId]);
                     $updated++;
                 } else {
-                    // Each new row gets the next code in this office's own
-                    // sequence (e.g. "MO-05") — computed fresh per row so it
-                    // correctly accounts for rows already inserted earlier in
-                    // this same import.
-                    $code = next_item_code($importOffice);
-                    $pdo->prepare('INSERT INTO Items (ItemCode, ItemName, ItemNameLocal, Description, Unit, OpeningQtyIn, OpeningQtyOut, Office) VALUES (?,?,?,?,?,?,?,?)')
-                        ->execute([$code, $rec['name'], $rec['local'], $rec['desc'], $rec['unit'], $openingIn, $openingOut, $importOffice]);
+                    // Next number in THIS (project, office) sequence —
+                    // computed fresh per row so rows created earlier in the
+                    // same import are already counted. e.g. P1-MO-0002.
+                    // An existing item's number is never regenerated.
+                    $code = next_item_code($importProject, $importOffice);
+                    $pdo->prepare('INSERT INTO Items (ItemCode, ItemName, ItemNameLocal, Description, Unit, OpeningQtyIn, OpeningQtyOut, Office, ProjectID) VALUES (?,?,?,?,?,?,?,?,?)')
+                        ->execute([$code, $rec['name'], $rec['local'], $rec['desc'], $rec['unit'], $openingIn, $openingOut, $importOffice, $importProject]);
                     $created++;
-                    $existingByName[strtolower($rec['name'])] = (int)$pdo->lastInsertId();
+                    $newId = (int)$pdo->lastInsertId();
+                    $existingByName[strtolower($rec['name'])] = $newId;
+                    $existingByNo[normalize_item_code($code)] = $newId;
                 }
             }
 
@@ -208,6 +235,11 @@ require __DIR__ . '/includes/header.php';
       </div>
     <?php endif; ?>
     <div class="field">
+      <label>Project (new items only)</label>
+      <?= project_select_field('project_id', $importProjectRaw !== '' ? $importProjectRaw : 'none') ?>
+      <div class="muted" style="font-size:12px;margin-top:4px;">Sets the project for items this import creates. Each project and office has its own Item # sequence. Existing items keep the number they already have.</div>
+    </div>
+    <div class="field">
       <label>CSV or Excel (.xlsx) file</label>
       <input type="file" name="import_file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
     </div>
@@ -217,8 +249,8 @@ require __DIR__ . '/includes/header.php';
   </form>
   <div style="padding:0 22px 22px;font-size:13px;color:var(--ink-soft);">
     <p><strong>Excel files:</strong> upload the "Items" file this app exports from the Items page — unmodified, or with rows added/edited.</p>
-    <p><strong>CSV files — expected columns</strong> (header row required): <code>ItemID</code> (optional — include it to update an existing item by ID), <code>ItemName</code> (required), <code>ItemNameLocal</code> / <code>ItemNameDari</code>, <code>Description</code>, <code>Unit</code>, <code>OpeningQtyIn</code>, <code>OpeningQtyOut</code>.</p>
-    <p>Matching: a row with a valid <code>ItemID</code> updates that item. Otherwise, an exact (case-insensitive) match on <code>ItemName</code> updates that item. If neither matches, a new item is created. Updating replaces every field shown above on that item — leave a column blank only if you want to clear it.</p>
+    <p><strong>CSV files — expected columns</strong> (header row required): <code>Item #</code> (optional — include it to update an existing item by its number), <code>ItemName</code> (required), <code>ItemNameLocal</code> / <code>ItemNameDari</code>, <code>Description</code>, <code>Unit</code>, <code>OpeningQtyIn</code>, <code>OpeningQtyOut</code>.</p>
+    <p>Matching: a row with a valid <code>Item #</code> updates that item. Otherwise, an exact (case-insensitive) match on <code>ItemName</code> updates that item. If neither matches, a new item is created in the office and project chosen above and gets the next number in that project's sequence. An existing item's <code>Item #</code> is never changed by an import. Updating replaces every other field shown above on that item — leave a column blank only if you want to clear it.</p>
   </div>
 </div>
 

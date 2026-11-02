@@ -37,7 +37,7 @@ if ($type === 'grn') {
     }
 
     $itemsSql = '
-        SELECT i.ItemID, i.ItemName, i.ItemNameLocal, i.Description, i.Unit,
+        SELECT i.ItemID, i.ItemCode, i.ItemName, i.ItemNameLocal, i.Description, i.Unit,
                COALESCE(r.qty_in, 0) AS TotalReceived
         FROM Items i
         LEFT JOIN (SELECT ItemID, SUM(Quantity) qty_in FROM StockReceiptDetails GROUP BY ItemID) r ON r.ItemID = i.ItemID
@@ -45,11 +45,11 @@ if ($type === 'grn') {
     if ($scopedOut) {
         $items = [];
     } elseif ($scope !== null) {
-        $stmt = $pdo->prepare($itemsSql . ' WHERE i.Office = ? ORDER BY i.ItemID');
+        $stmt = $pdo->prepare($itemsSql . ' WHERE i.Office = ? ORDER BY i.ItemCode');
         $stmt->execute([$scope]);
         $items = $stmt->fetchAll();
     } else {
-        $items = $pdo->query($itemsSql . ' ORDER BY i.ItemID')->fetchAll();
+        $items = $pdo->query($itemsSql . ' ORDER BY i.ItemCode')->fetchAll();
     }
 
     // Unscoped by design — only $docOrder (built from the already-scoped
@@ -93,7 +93,7 @@ if ($type === 'grn') {
         'autofilter' => 'A' . $headerRowNum . ':E' . $lastRow,
     ];
 
-    $metaHeaders = ['Item ID', 'Item Name', 'Item Name (Dari)', 'Description', 'Unit', 'Total Qty Received'];
+    $metaHeaders = ['Item #', 'Item Name', 'Item Name (Dari)', 'Description', 'Unit', 'Total Qty Received'];
     $totalsField = 'TotalReceived';
     $filenamePrefix = 'GRN_Details';
 } else {
@@ -116,7 +116,7 @@ if ($type === 'grn') {
     }
 
     $itemsSql = '
-        SELECT i.ItemID, i.ItemName, i.ItemNameLocal, i.Description, i.Unit,
+        SELECT i.ItemID, i.ItemCode, i.ItemName, i.ItemNameLocal, i.Description, i.Unit,
                COALESCE(o.qty_out, 0) AS TotalOut
         FROM Items i
         LEFT JOIN (SELECT ItemID, SUM(Quantity) qty_out FROM StockReleaseDetails GROUP BY ItemID) o ON o.ItemID = i.ItemID
@@ -124,11 +124,11 @@ if ($type === 'grn') {
     if ($scopedOut) {
         $items = [];
     } elseif ($scope !== null) {
-        $stmt = $pdo->prepare($itemsSql . ' WHERE i.Office = ? ORDER BY i.ItemID');
+        $stmt = $pdo->prepare($itemsSql . ' WHERE i.Office = ? ORDER BY i.ItemCode');
         $stmt->execute([$scope]);
         $items = $stmt->fetchAll();
     } else {
-        $items = $pdo->query($itemsSql . ' ORDER BY i.ItemID')->fetchAll();
+        $items = $pdo->query($itemsSql . ' ORDER BY i.ItemCode')->fetchAll();
     }
 
     // Unscoped by design — same reasoning as the GRN branch above: only
@@ -173,7 +173,7 @@ if ($type === 'grn') {
         'autofilter' => 'A' . $headerRowNum . ':G' . $lastRow,
     ];
 
-    $metaHeaders = ['Item ID', 'Item Name', 'Item Name (Dari)', 'Description', 'Unit', 'Total Qty Out'];
+    $metaHeaders = ['Item #', 'Item Name', 'Item Name (Dari)', 'Description', 'Unit', 'Total Qty Out'];
     $totalsField = 'TotalOut';
     $filenamePrefix = 'StockCards_Details';
 }
@@ -188,7 +188,7 @@ foreach ($docOrder as $docNo) $headerRow[] = ['v' => $docNo, 's' => 'header_rota
 $sheet2Rows = [$headerRow];
 foreach ($items as $it) {
     $row = [
-        ['v' => $it['ItemID']],
+        ['v' => $it['ItemCode'] ?? ''],
         ['v' => $it['ItemName']],
         ['v' => $it['ItemNameLocal']],
         ['v' => $it['Description']],
@@ -202,7 +202,7 @@ foreach ($items as $it) {
     $sheet2Rows[] = $row;
 }
 
-$metaWidths = [9, 26, 20, 26, 10, 16];
+$metaWidths = [16, 26, 20, 26, 10, 16];
 $colWidths = $metaWidths;
 foreach ($docOrder as $docNo) $colWidths[] = 6;
 
