@@ -82,20 +82,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : 'Your account has no office assigned yet — contact an administrator.';
         } else {
             if ($id) {
-                // Keep the item's existing ID (e.g. "MO-03") unless it doesn't
-                // have one yet, or an admin just moved it to the other
-                // office — in that case its code is regenerated in the new
-                // office's own sequence, so the prefix always matches where
-                // the item actually lives.
-                $code = $item['ItemCode'] ?? null;
-                if ($code === null || $code === '' || $office !== ($item['Office'] ?? null)) {
-                    $code = next_item_code($office);
-                }
-                $stmt = db()->prepare('UPDATE Items SET ItemCode=?, ItemName=?, ItemNameLocal=?, Description=?, Unit=?, Office=?, ProjectID=?, CategoryID=? WHERE ItemID=?');
-                $stmt->execute([$code, $name, $local, $desc, $unit, $office, $projectId, $categoryId, $id]);
+                // The Item # is assigned ONCE, when the item is created, and
+                // is deliberately NOT part of this UPDATE — not even when an
+                // admin later corrects its office or files it under another
+                // project. Like a SKU, it is the stable number printed on
+                // GRNs and stock cards; rewriting it would make old paper
+                // copies disagree with the same document printed today.
+                // See the twin comment in import_items.php and in
+                // next_item_code() (includes/functions.php).
+                $stmt = db()->prepare('UPDATE Items SET ItemName=?, ItemNameLocal=?, Description=?, Unit=?, Office=?, ProjectID=?, CategoryID=? WHERE ItemID=?');
+                $stmt->execute([$name, $local, $desc, $unit, $office, $projectId, $categoryId, $id]);
                 flash_set('Item updated.');
             } else {
-                $code = next_item_code($office);
+                // One sequence per (project, office): P1-MO-0001, NP-PO-0003…
+                $code = next_item_code($projectId, $office);
                 $stmt = db()->prepare('INSERT INTO Items (ItemCode, ItemName, ItemNameLocal, Description, Unit, OpeningQtyIn, OpeningQtyOut, Office, ProjectID, CategoryID) VALUES (?,?,?,?,?,0,0,?,?,?)');
                 $stmt->execute([$code, $name, $local, $desc, $unit, $office, $projectId, $categoryId]);
                 flash_set("Item added as $code.");
@@ -123,8 +123,9 @@ require __DIR__ . '/includes/header.php';
     <?= csrf_field() ?>
     <?php if ($id): ?>
     <div class="field">
-      <label>Item ID</label>
+      <label>Item #</label>
       <input type="text" value="<?= h($item['ItemCode'] ?? '') ?>" disabled>
+      <div class="muted" style="font-size:12px;margin-top:4px;">Assigned when this item was created. It never changes, even if you move the item to another office or project.</div>
     </div>
     <?php endif; ?>
     <div class="field">

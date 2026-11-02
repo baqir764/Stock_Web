@@ -17,9 +17,9 @@ $sql = '
     LEFT JOIN (SELECT ItemID, SUM(Quantity) qty_in FROM StockReceiptDetails GROUP BY ItemID) r ON r.ItemID = i.ItemID
     LEFT JOIN (SELECT ItemID, SUM(Quantity) qty_out FROM StockReleaseDetails GROUP BY ItemID) o ON o.ItemID = i.ItemID
 ';
-// Sorted by the per-office ID series (MO-01, MO-02, … then PO-01, PO-02, …)
-// to match the Items list page — see the identical comment in items.php.
-$codeOrder = 'i.Office, CAST(SUBSTR(i.ItemCode, INSTR(i.ItemCode, \'-\') + 1) AS INTEGER)';
+// Sorted by the public Item # to match the Items list page — see the
+// identical comment in items.php. ItemID is only an internal row address.
+$codeOrder = 'i.ItemCode';
 if ($scope === '__unassigned__') {
     $items = [];
 } elseif ($scope !== null) {
@@ -30,7 +30,10 @@ if ($scope === '__unassigned__') {
     $items = $pdo->query($sql . " ORDER BY $codeOrder")->fetchAll();
 }
 
-$headers = ['Item ID', 'Item Code', 'Item Name', 'Item Name (Dari)', 'Description', 'Unit', 'Opening Qty In', 'Opening Qty Out', 'Total Received', 'Total Released', 'Current Balance'];
+// Exactly ONE identifier column: the public "Item #". The old "Item ID"
+// (internal row address) and "Item Code" (the retired per-office code) are
+// gone — see stockapp_item_codes() in config/db.php.
+$headers = ['Item #', 'Item Name', 'Item Name (Dari)', 'Description', 'Unit', 'Opening Qty In', 'Opening Qty Out', 'Total Received', 'Total Released', 'Current Balance'];
 
 $rows = [];
 $rows[] = [['v' => 'Items (' . count($items) . ')', 's' => 'title']];
@@ -42,7 +45,6 @@ $headerRowNum = count($rows);
 foreach ($items as $it) {
     $balance = (float)$it['TotalReceived'] - (float)$it['TotalReleased'];
     $rows[] = [
-        ['v' => (int)$it['ItemID']],
         ['v' => $it['ItemCode'] ?? ''],
         ['v' => $it['ItemName']],
         ['v' => $it['ItemNameLocal']],
@@ -60,7 +62,7 @@ $lastRow = count($rows);
 $sheet = [
     'name' => 'Items',
     'rows' => $rows,
-    'colWidths' => [9, 11, 26, 20, 26, 10, 13, 13, 12, 12, 12],
+    'colWidths' => [16, 26, 20, 26, 10, 13, 13, 12, 12, 12],
     'freeze' => ['x' => 0, 'y' => $headerRowNum],
     'autofilter' => 'A' . $headerRowNum . ':' . xlsx_col_letter(count($headers)) . $lastRow,
 ];

@@ -8,6 +8,22 @@ function csv_cell(array $row, array $headerMap, string $name): string {
     return ($idx !== null && isset($row[$idx])) ? trim((string)$row[$idx]) : '';
 }
 
+// Finds the ONE item-number column in a CSV header. This app exports it as
+// "Item #"; the other spellings are accepted so hand-made or older sheets
+// still import. Values are always the public number, never the hidden
+// internal ItemID — see stockapp_item_codes() in config/db.php.
+function item_no_column(array $headerMap): ?int {
+    foreach (['item #', 'item#', 'item no', 'itemno', 'item number', 'itemnumber',
+              'item code', 'itemcode', 'itemid', 'item'] as $alias) {
+        if (isset($headerMap[$alias])) return (int)$headerMap[$alias];
+    }
+    return null;
+}
+
+function csv_cell_at(array $row, ?int $idx): string {
+    return ($idx !== null && isset($row[$idx])) ? trim((string)$row[$idx]) : '';
+}
+
 // One file, two independent import abilities — GRNs and Stock Cards each keep
 // their own required columns, grouping rules and save logic. Either ability
 // accepts a plain CSV or this app's own exported .xlsx (GRN Details /
@@ -91,13 +107,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                 foreach ($headerRow as $idx => $name) {
                     $headerMap[strtolower(trim((string)$name))] = $idx;
                 }
+                // One lookup for BOTH import types (GRN and stock card).
+                $itemNoCol = item_no_column($headerMap);
 
                 if ($type === 'grn') {
-                    $required = ['grnnumber', 'itemid', 'quantity'];
+                    $required = ['grnnumber', 'quantity'];
                     $missing = array_filter($required, fn($c) => !isset($headerMap[$c]));
+                    if ($itemNoCol === null) $missing[] = 'Item #';
 
                     if ($missing) {
-                        $error = 'Missing required column(s): ' . implode(', ', $missing) . '. Expected at least GRNNumber, ItemID, Quantity.';
+                        $error = 'Missing required column(s): ' . implode(', ', $missing) . '. Expected at least GRNNumber, Item #, Quantity.';
                     } else {
                         $groups = [];
                         while (($row = fgetcsv($handle)) !== false) {
@@ -116,18 +135,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                                 ];
                             }
                             $groups[$grn]['lines'][] = [
-                                'item_id' => (int)csv_cell($row, $headerMap, 'itemid'),
+                                'item_no' => csv_cell_at($row, $itemNoCol),
                                 'qty' => (float)csv_cell($row, $headerMap, 'quantity'),
                             ];
                         }
                         fclose($handle);
                     }
                 } else {
-                    $required = ['stockcardno', 'itemid', 'quantity'];
+                    $required = ['stockcardno', 'quantity'];
                     $missing = array_filter($required, fn($c) => !isset($headerMap[$c]));
+                    if ($itemNoCol === null) $missing[] = 'Item #';
 
                     if ($missing) {
-                        $error = 'Missing required column(s): ' . implode(', ', $missing) . '. Expected at least StockCardNo, ItemID, Quantity.';
+                        $error = 'Missing required column(s): ' . implode(', ', $missing) . '. Expected at least StockCardNo, Item #, Quantity.';
                     } else {
                         $hfs = all_health_facilities($importOffice);
                         $hfById = array_column($hfs, null, 'HFID');
@@ -161,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                                 ];
                             }
                             $groups[$cardNo]['lines'][] = [
-                                'item_id' => (int)csv_cell($row, $headerMap, 'itemid'),
+                                'item_no' => csv_cell_at($row, $itemNoCol),
                                 'qty' => (float)csv_cell($row, $headerMap, 'quantity'),
                             ];
                         }
@@ -228,18 +248,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                         if ($docNo !== '') $docNumbers[$i] = $docNo;
                     }
 
-                    // Item ID + doc column -> quantity, grouped back into per-document lines.
+                    // Item # + doc column -> quantity, grouped back into per-document lines.
                     $linesByDoc = [];
                     for ($r = 1; $r < count($itemsRows); $r++) {
                         $row = $itemsRows[$r];
-                        $itemId = (int)($row[0] ?? 0);
-                        if ($itemId <= 0) continue;
+                        $itemNo = trim((string)($row[0] ?? ''));
+                        if ($itemNo === '') continue;
                         foreach ($docNumbers as $colIdx => $docNo) {
                             $qty = $row[$colIdx] ?? null;
                             if ($qty === null || $qty === '') continue;
                             $qty = (float)$qty;
                             if ($qty <= 0) continue;
-                            $linesByDoc[$docNo][] = ['item_id' => $itemId, 'qty' => $qty];
+                            $linesByDoc[$docNo][] = ['item_no' => $itemNo, 'qty' => $qty];
                         }
                     }
 
@@ -307,7 +327,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
     // ==================== Save $groups — identical regardless of source format ====================
     if ($groups !== null && !$error) {
         if ($type === 'grn') {
-            $validIds = array_map('intval', array_column(all_items($importOffice), 'ItemID'));
+            // Files name items by their ONE public number, never by the
+            // hidden internal ItemID (same rule in the Card branch below).
+            $itemsByCode = [];
+            foreach (all_items($importOffice) as $it) {
+                $key = normalize_item_code($it['ItemCode'] ?? null);
+                if ($key !== '') $itemsByCode[$key] = (int)$it['ItemID'];
+            }
             $pdo = db();
             $me = current_user();
 
@@ -315,7 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
             $updated = 0;
             $totalLines = 0;
             $droppedNoQty = 0;
-            $skippedItemIds = [];
+            $skippedItemNos = [];
             $failed = []; // GRNNumber => reason
 
             foreach ($groups as $grn => $g) {
@@ -344,20 +370,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                     $lineStmt = $pdo->prepare('INSERT INTO StockReceiptDetails (ReceiptID, ItemID, Quantity) VALUES (?,?,?)');
                     $count = 0;
                     foreach ($g['lines'] as $line) {
-                        if ($line['item_id'] <= 0) continue;
+                        $itemNo = normalize_item_code($line['item_no'] ?? null);
+                        if ($itemNo === '') continue;
                         if ($line['qty'] <= 0) {
                             $droppedNoQty++;
                             continue;
                         }
-                        if (!in_array($line['item_id'], $validIds, true)) {
-                            $skippedItemIds[] = $line['item_id'];
+                        if (!isset($itemsByCode[$itemNo])) {
+                            $skippedItemNos[] = $line['item_no'];
                             continue;
                         }
-                        $lineStmt->execute([$receiptId, $line['item_id'], $line['qty']]);
+                        $lineStmt->execute([$receiptId, $itemsByCode[$itemNo], $line['qty']]);
                         $count++;
                     }
 
-                    if ($count === 0) throw new Exception('No valid item line (valid Item ID + quantity > 0) found for this GRN.');
+                    if ($count === 0) throw new Exception('No valid item line (valid Item # + quantity > 0) found for this GRN.');
 
                     $pdo->commit();
                     $totalLines += $count;
@@ -373,13 +400,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                 'updated' => $updated,
                 'totalLines' => $totalLines,
                 'droppedNoQty' => $droppedNoQty,
-                'skippedItemIds' => array_values(array_unique($skippedItemIds)),
+                'skippedItemNos' => array_values(array_unique($skippedItemNos)),
                 'blankRows' => $blankRows,
                 'failed' => $failed,
             ];
         } else {
             $items = stock_balance($importOffice);
-            $validIds = array_map('intval', array_column($items, 'ItemID'));
+            // One public number -> internal row, scoped to this office.
+            $itemsByCode = [];
+            foreach ($items as $it) {
+                $key = normalize_item_code($it['ItemCode'] ?? null);
+                if ($key !== '') $itemsByCode[$key] = (int)$it['ItemID'];
+            }
             $itemNames = array_column($items, 'ItemName', 'ItemID');
             $hfs = all_health_facilities($importOffice);
             $hfById = array_column($hfs, null, 'HFID');
@@ -390,7 +422,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
             $updated = 0;
             $totalLines = 0;
             $droppedNoQty = 0;
-            $skippedItemIds = [];
+            $skippedItemNos = [];
             $failed = []; // StockCardNo => reason
 
             foreach ($groups as $cardNo => $g) {
@@ -444,22 +476,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                     $availByItem = [];
                     $overLimit = [];
                     foreach ($g['lines'] as $line) {
-                        $itemId = $line['item_id'];
+                        $itemNo = normalize_item_code($line['item_no'] ?? null);
                         $qty = $line['qty'];
-                        if ($itemId <= 0) continue;
+                        if ($itemNo === '') continue;
                         if ($qty <= 0) {
                             $droppedNoQty++;
                             continue;
                         }
-                        if (!in_array($itemId, $validIds, true)) {
-                            $skippedItemIds[] = $itemId;
+                        if (!isset($itemsByCode[$itemNo])) {
+                            $skippedItemNos[] = $line['item_no'];
                             continue;
                         }
+                        $itemId = $itemsByCode[$itemNo];
                         if (!array_key_exists($itemId, $availByItem)) {
                             $availByItem[$itemId] = item_balance($itemId);
                         }
                         if ($qty > $availByItem[$itemId]) {
-                            $name = $itemNames[$itemId] ?? "Item $itemId";
+                            $name = $itemNames[$itemId] ?? $itemNo;
                             $overLimit[] = sprintf('%s (needs %s, only %s available)', $name, rtrim(rtrim(number_format($qty, 2), '0'), '.'), rtrim(rtrim(number_format($availByItem[$itemId], 2), '0'), '.'));
                             continue;
                         }
@@ -469,7 +502,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                     }
 
                     if ($count === 0) {
-                        $reason = $overLimit ? ('Exceeds available balance: ' . implode('; ', $overLimit)) : 'No valid item line (valid Item ID + quantity > 0, within available balance) found for this card.';
+                        $reason = $overLimit ? ('Exceeds available balance: ' . implode('; ', $overLimit)) : 'No valid item line (valid Item # + quantity > 0, within available balance) found for this card.';
                         throw new Exception($reason);
                     }
 
@@ -488,7 +521,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file']) && !c
                 'updated' => $updated,
                 'totalLines' => $totalLines,
                 'droppedNoQty' => $droppedNoQty,
-                'skippedItemIds' => array_values(array_unique($skippedItemIds)),
+                'skippedItemNos' => array_values(array_unique($skippedItemNos)),
                 'blankRows' => $blankRows,
                 'failed' => $failed,
             ];
@@ -520,8 +553,8 @@ require __DIR__ . '/includes/header.php';
       <?php if ($report['blankRows']): ?>
         <p class="muted"><?= $report['blankRows'] ?> row(s) skipped — no <?= $type === 'card' ? 'stock card number' : 'GRN number' ?>.</p>
       <?php endif; ?>
-      <?php if ($report['skippedItemIds']): ?>
-        <p style="color:var(--amber);">Skipped unknown Item ID(s): <?= h(implode(', ', $report['skippedItemIds'])) ?> — these don't exist in your Items list.</p>
+      <?php if ($report['skippedItemNos']): ?>
+        <p style="color:var(--amber);">Skipped unknown Item #(s): <?= h(implode(', ', $report['skippedItemNos'])) ?> — these don't exist in your Items list.</p>
       <?php endif; ?>
       <?php if ($report['failed']): ?>
         <p style="color:var(--red);font-weight:600;">The following <?= $type === 'card' ? 'card(s) need attention' : 'GRN(s) were not saved' ?>:</p>
@@ -579,11 +612,11 @@ require __DIR__ . '/includes/header.php';
   <div style="padding:0 22px 22px;font-size:13px;color:var(--ink-soft);">
     <p><strong>Excel files:</strong> upload the <?= $type === 'card' ? '"Stock Cards Details"' : '"GRN Details"' ?> file this app exports from <?= $type === 'card' ? 'the Stock Cards page' : 'the GRN page' ?> — unmodified, or with quantities/dates/rows edited. Its "Items" sheet (the per-<?= $type === 'card' ? 'card' : 'GRN' ?> quantity matrix) supplies the item lines, and its list sheet supplies each <?= $type === 'card' ? "card's facility, date and receiver" : "GRN's date and supplier" ?>.</p>
     <?php if ($type === 'card'): ?>
-      <p><strong>CSV files — expected columns</strong> (header row required): <code>StockCardNo</code>, <code>ReleaseDate</code>, <code>HFID</code> (or <code>HFName</code> as an exact-match fallback), <code>ReceiverName</code>, <code>Group</code> (optional — any free text, e.g. "Q1"), <code>ItemID</code>, <code>Quantity</code>. <code>ItemName</code> and <code>Unit</code> columns are ignored if present — matching is by Item ID only.</p>
+      <p><strong>CSV files — expected columns</strong> (header row required): <code>StockCardNo</code>, <code>ReleaseDate</code>, <code>HFID</code> (or <code>HFName</code> as an exact-match fallback), <code>ReceiverName</code>, <code>Group</code> (optional — any free text, e.g. "Q1"), <code>Item #</code>, <code>Quantity</code>. <code>ItemName</code> and <code>Unit</code> columns are ignored if present — matching is by Item # only.</p>
       <p>One row per item line. Repeat the card number, date, facility, receiver and group on every row belonging to that card. Leave <code>ReceiverName</code> blank to auto-fill it from the facility's in-charge person. Leave <code>Group</code> blank for no group.</p>
       <p>Quantities that would exceed an item's current available balance are rejected line-by-line — the rest of the card still saves. If a stock card number already exists, its facility/date/receiver/group are updated and <strong>all of its item lines are replaced</strong> with the ones in the file.</p>
     <?php else: ?>
-      <p><strong>CSV files — expected columns</strong> (header row required): <code>GRNNumber</code>, <code>ReceiptDate</code>, <code>Supplier</code>, <code>Group</code> (optional — any free text, e.g. "Q1"), <code>ItemID</code>, <code>Quantity</code>. <code>ItemName</code> and <code>Unit</code> columns are ignored if present — matching is by Item ID only.</p>
+      <p><strong>CSV files — expected columns</strong> (header row required): <code>GRNNumber</code>, <code>ReceiptDate</code>, <code>Supplier</code>, <code>Group</code> (optional — any free text, e.g. "Q1"), <code>Item #</code>, <code>Quantity</code>. <code>ItemName</code> and <code>Unit</code> columns are ignored if present — matching is by Item # only.</p>
       <p>One row per item line. Repeat the GRN number, date, supplier and group on every row belonging to that GRN. Leave <code>Group</code> blank for no group.</p>
       <p>If a GRN number already exists, its date/supplier/group are updated and <strong>all of its item lines are replaced</strong> with the ones in the file — the same as editing it by hand. A new GRN number creates a new GRN.</p>
     <?php endif; ?>

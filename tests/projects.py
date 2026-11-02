@@ -203,7 +203,7 @@ require __DIR__ . '/' . $req['page'];
 
     # ---- imports file only NEW documents under a project ----
     csv = app / 'cards.csv'
-    csv.write_text('StockCardNo,HFID,ItemID,Quantity\nSTC-P1,1,1,2\nIMPORTED,1,1,2\n')
+    csv.write_text('StockCardNo,HFID,Item #,Quantity\nSTC-P1,1,P1-MO-0001,2\nIMPORTED,1,P1-MO-0001,2\n')
     request('import.php', get={'type': 'card'},
             post={'office': 'main', 'project_id': '2', 'printed_subject': '', 'storekeeper_name': ''},
             files={'import_file': {'name': 'cards.csv', 'tmp_name': str(csv),

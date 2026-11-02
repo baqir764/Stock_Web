@@ -183,7 +183,7 @@ if ($report === 'dates' && $scope !== '__unassigned__') {
     // Keep only items that actually moved (or had stock) around the period,
     // and look up their names/units in one go.
     $names = [];
-    $nameStmt = db()->prepare('SELECT ItemID, ItemName, Unit, Office, CategoryID FROM Items');
+    $nameStmt = db()->prepare('SELECT ItemID, ItemCode, ItemName, Unit, Office, CategoryID FROM Items');
     $nameStmt->execute();
     foreach ($nameStmt->fetchAll() as $it) {
         $names[(int)$it['ItemID']] = $it;
@@ -441,10 +441,10 @@ if ($report === 'item' && $itemId > 0) {
       <span class="muted">Balance at the start of the period, plus what came in and went out inside it.</span>
     </div>
     <table>
-      <thead><tr><th>Item</th><th>Unit</th><th>Category</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th class="num">Opening</th><th class="num">Received</th><th class="num">Released</th><th class="num">Closing</th></tr></thead>
+      <thead><tr><th>Item #</th><th>Item</th><th>Unit</th><th>Category</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th class="num">Opening</th><th class="num">Received</th><th class="num">Released</th><th class="num">Closing</th></tr></thead>
       <tbody>
         <?php if (!$movement): ?>
-          <tr><td colspan="<?= is_admin() ? 8 : 7 ?>" class="muted">No stock movement in this period.</td></tr>
+          <tr><td colspan="<?= is_admin() ? 9 : 8 ?>" class="muted">No stock movement in this period.</td></tr>
         <?php endif; ?>
         <?php foreach ($movement as $id => $m):
           $opening = $m['beforeIn'] - $m['beforeOut'];
@@ -452,6 +452,7 @@ if ($report === 'item' && $itemId > 0) {
           $item = $names[$id] ?? null;
         ?>
           <tr>
+            <td class="muted"><?= h($item['ItemCode'] ?? '') ?></td>
             <td><a href="reports?report=item&item_id=<?= (int)$id ?><?= $scope !== null ? ('&office=' . urlencode($scope)) : '' ?><?= h($dateQs . $projQs . $catQs) ?>"><?= h($item['ItemName'] ?? ('Item ' . $id)) ?></a></td>
             <td><?= h($item['Unit'] ?? '') ?></td>
             <td><?= h(category_label((int)($item['CategoryID'] ?? 0) ?: null)) ?></td>
@@ -479,7 +480,7 @@ if ($report === 'item' && $itemId > 0) {
           <option value="">— Select an item —</option>
           <?php foreach ($itemsForPicker as $it): ?>
             <option value="<?= (int)$it['ItemID'] ?>" <?= $itemId === (int)$it['ItemID'] ? 'selected' : '' ?>>
-              <?= h($it['ItemName']) ?><?= $it['ItemNameLocal'] ? ' — ' . h($it['ItemNameLocal']) : '' ?><?= is_admin() ? ' (' . h(office_label($it['Office'] ?? null)) . ')' : '' ?>
+              <?= h(($it['ItemCode'] ?? '') !== '' ? $it['ItemCode'] . ' — ' : '') ?><?= h($it['ItemName']) ?><?= $it['ItemNameLocal'] ? ' — ' . h($it['ItemNameLocal']) : '' ?><?= is_admin() ? ' (' . h(office_label($it['Office'] ?? null)) . ')' : '' ?>
             </option>
           <?php endforeach; ?>
         </select>
@@ -488,6 +489,10 @@ if ($report === 'item' && $itemId > 0) {
 
     <?php if ($itemId && $selectedItem): ?>
       <div class="detail-grid">
+        <div>
+          <div class="label">Item #</div>
+          <div class="value"><?= h($selectedItem['ItemCode'] ?? '') ?></div>
+        </div>
         <div>
           <div class="label">Item</div>
           <div class="value"><?= h($selectedItem['ItemName']) ?></div>
@@ -573,11 +578,11 @@ if ($report === 'item' && $itemId > 0) {
       <span class="muted">A live snapshot of right now — this one report is never limited by the dates above.</span>
     </div>
     <table>
-      <thead><tr><th>Item ID</th><th>Item</th><th>Unit</th><th>Category</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th class="num">Received</th><th class="num">Released</th><th class="num">Balance</th></tr></thead>
+      <thead><tr><th>Item #</th><th>Item</th><th>Unit</th><th>Category</th><?php if (is_admin()): ?><th>Office</th><?php endif; ?><th class="num">Received</th><th class="num">Released</th><th class="num">Balance</th></tr></thead>
       <tbody>
         <?php foreach ($balances as $b): ?>
           <tr>
-            <td class="muted"><?= h($b['ItemID']) ?></td>
+            <td class="muted"><?= h($b['ItemCode'] ?? '') ?></td>
             <td><a href="reports?report=item&item_id=<?= (int)$b['ItemID'] ?><?= $scope !== null ? ('&office=' . urlencode($scope)) : '' ?><?= h($dateQs . $projQs . $catQs) ?>"><?= h($b['ItemName']) ?></a></td>
             <td><?= h($b['Unit']) ?></td>
             <td><?= h(category_label((int)($b['CategoryID'] ?? 0) ?: null)) ?></td>

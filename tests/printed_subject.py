@@ -192,7 +192,7 @@ if ($req['page'] === 'helpers') {
     print('PASS: a post without the Subject field leaves the stored subject alone')
 
     csv = app / 'cards.csv'
-    csv.write_text('StockCardNo,HFID,ItemID,Quantity\nNEW-MAIN,1,1,2\nLEGACY,1,1,2\nIMPORTED,1,1,2\n')
+    csv.write_text('StockCardNo,HFID,Item #,Quantity\nNEW-MAIN,1,NP-MO-0001,2\nLEGACY,1,NP-MO-0001,2\nIMPORTED,1,NP-MO-0001,2\n')
     # Snapshots taken AFTER the edits above: an import must leave both the
     # subjects and the storekeeper names of existing cards exactly as they are.
     subjects_before = {c: subject(c) for c in ('NEW-MAIN', 'LEGACY')}

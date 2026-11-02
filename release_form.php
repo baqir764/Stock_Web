@@ -66,7 +66,7 @@ $officeItems = $office !== null ? stock_balance($office) : [];
 $officeItemProjects = array_column($officeItems, 'ProjectID', 'ItemID');
 $officeItemNames = array_column($officeItems, 'ItemName', 'ItemID');
 
-// stock_balance() orders by ItemID (useful elsewhere), but the combo box
+// stock_balance() orders by the public Item # (useful elsewhere), but the combo box
 // below should list items alphabetically by name — a separate sorted copy
 // keeps that ordering local to the dropdown without touching $items itself
 // (which still drives $validIds / $itemMap / balance lookups below).
@@ -250,11 +250,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($wrongProject) {
                 throw new Exception('These items belong to a different project (or to "No project") and cannot be issued on this stock card: ' . implode(', ', array_unique($wrongProject)) . '.');
             }
-            if ($count === 0) throw new Exception('Add at least one item line with a valid Item ID and quantity, within the available balance.');
+            if ($count === 0) throw new Exception('Add at least one item line with a valid Item # and quantity, within the available balance.');
 
             $pdo->commit();
             $msg = "Stock card $cardNo " . ($release ? 'updated' : 'recorded') . " with $count item line(s).";
-            if ($skipped) $msg .= ' Skipped unknown Item ID(s): ' . implode(', ', array_unique($skipped)) . '.';
+            if ($skipped) $msg .= ' Skipped ' . count(array_unique($skipped)) . ' unknown item line(s).';
             if ($droppedNoQty) $msg .= " $droppedNoQty line(s) removed because quantity was blank or 0.";
             if ($overLimit) $msg .= ' Rejected — exceeds available balance: ' . implode('; ', $overLimit) . '.';
             flash_set($msg);
@@ -425,7 +425,7 @@ require __DIR__ . '/includes/header.php';
               <select name="item_id[]" class="id-input" onchange="updateRowInfo(this)">
                 <option value="">— Select item —</option>
                 <?php foreach ($itemsForSelect as $it): ?>
-                  <option value="<?= (int)$it['ItemID'] ?>" <?= ((string)$selectedId === (string)$it['ItemID']) ? 'selected' : '' ?>><?= h($it['ItemName']) ?></option>
+                  <option value="<?= (int)$it['ItemID'] ?>" <?= ((string)$selectedId === (string)$it['ItemID']) ? 'selected' : '' ?>><?= h(($it['ItemCode'] ?? '') !== '' ? $it['ItemCode'] . ' — ' : '') ?><?= h($it['ItemName']) ?></option>
                 <?php endforeach; ?>
               </select>
             </td>

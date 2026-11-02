@@ -25,7 +25,7 @@ if (!$release || !can_access_office($release['Office'] ?? null)) {
 }
 
 $lines = db()->prepare('
-    SELECT rd.*, i.ItemName, i.ItemNameLocal, i.Description, i.Unit
+    SELECT rd.*, i.ItemCode, i.ItemName, i.ItemNameLocal, i.Description, i.Unit
     FROM StockReleaseDetails rd
     JOIN Items i ON i.ItemID = rd.ItemID
     WHERE rd.ReleaseID = ?
@@ -135,7 +135,7 @@ require __DIR__ . '/includes/header.php';
   </div>
   <table>
     <thead>
-      <tr><th>Item ID</th><th>Item Name</th><th>Item Name (Dari)</th><th>Description</th><th>Unit</th><th class="num">Quantity</th></tr>
+      <tr><th>Item #</th><th>Item Name</th><th>Item Name (Dari)</th><th>Description</th><th>Unit</th><th class="num">Quantity</th></tr>
     </thead>
     <tbody>
       <?php if (!$lines): ?>
@@ -143,7 +143,7 @@ require __DIR__ . '/includes/header.php';
       <?php endif; ?>
       <?php foreach ($lines as $line): ?>
         <tr>
-          <td class="muted"><?= h($line['ItemID']) ?></td>
+          <td class="muted"><?= h($line['ItemCode'] ?? '') ?></td>
           <td><?= h($line['ItemName']) ?></td>
           <td class="muted"><?= $line['ItemNameLocal'] ? h($line['ItemNameLocal']) : '—' ?></td>
           <td class="muted"><?= h($line['Description']) ?></td>

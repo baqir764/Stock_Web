@@ -31,8 +31,9 @@ function h(?string $s): string {
 }
 
 // Normalizes a spreadsheet/CSV header cell down to a bare lowercase key
-// (letters+digits only) so "Item ID", "ItemID" and "item_id" all match the
-// same lookup key — used by the Items/Health Facilities importers.
+// (letters+digits only) so "Item #", "Item No" and "ItemCode" all match the
+// same lookup key — used by the Items/Health Facilities importers. The app
+// exports exactly one item-number column, named "Item #" (key "item").
 function header_key(string $s): string {
     return preg_replace('/[^a-z0-9]/', '', strtolower(trim($s)));
 }
@@ -112,8 +113,10 @@ function stock_balance(?string $office = null, $project = '__all__', $category =
     if ($cSql !== '') {
         $where[] = substr($cSql, 5);
     }
+    // Sorted by the public Item #, not by the hidden internal ItemID — the
+    // zero-padded sequence makes a plain string sort the right numeric order.
     $sql = '
-        SELECT i.ItemID, i.ItemName, i.ItemNameLocal, i.Description, i.Unit, i.Office, i.ProjectID,
+        SELECT i.ItemID, i.ItemCode, i.ItemName, i.ItemNameLocal, i.Description, i.Unit, i.Office, i.ProjectID,
                COALESCE(r.qty_in, 0)  AS TotalReceived,
                COALESCE(o.qty_out, 0) AS TotalReleased,
                COALESCE(r.qty_in, 0) - COALESCE(o.qty_out, 0) AS CurrentBalance,
@@ -123,13 +126,20 @@ function stock_balance(?string $office = null, $project = '__all__', $category =
                ON r.ItemID = i.ItemID
         LEFT JOIN (SELECT ItemID, SUM(Quantity) qty_out FROM StockReleaseDetails GROUP BY ItemID) o
                ON o.ItemID = i.ItemID
-    ' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY i.ItemID';
+    ' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY i.ItemCode';
     if ($params) {
         $stmt = db()->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
     }
     return db()->query($sql)->fetchAll();
+}
+
+// Item numbers are compared without surrounding spaces and without regard
+// to case, so a spreadsheet cell " np-mo-0001 " still finds its item. Used
+// by both importers (import.php / import_items.php) before any lookup.
+function normalize_item_code(?string $s): string {
+    return strtoupper(trim((string)($s ?? '')));
 }
 
 function item_balance(int $itemId): float {
@@ -495,31 +505,34 @@ function office_select_field(string $name, ?string $selected, string $extraAttrs
     return $html;
 }
 
-// Short office code used inside auto-generated document numbers — Provincial
-// Office and Main Office only, so this is a plain two-way switch rather than
-// a third map to keep in sync with office_options().
+// Short office code used inside auto-generated document numbers (and in the
+// item-number prefix built by item_code_prefix()) — Provincial Office and
+// Main Office only, so this is a plain two-way switch rather than a third
+// map to keep in sync with office_options().
 function office_code(?string $office): string {
     return $office === 'main' ? 'MO' : 'PO';
 }
 
-// Suggests the next per-office item ID, e.g. "MO-01" (Main Office) or
-// "PO-01" (Provincial Office) — a plain sequential number scoped to each
-// office's own set of items, zero-padded to at least 2 digits. Unlike
-// next_document_number() below (a suggested, freely-editable text default),
-// this is the actual stored ItemCode, so it's based on the highest existing
-// number for that office's prefix rather than a row count — that way a
-// deleted item's code is never handed out again to a different item.
-function next_item_code(?string $office): string {
-    $prefix = office_code($office);
-    $stmt = db()->prepare('SELECT ItemCode FROM Items WHERE Office = ? AND ItemCode LIKE ?');
-    $stmt->execute([$office, $prefix . '-%']);
+// Suggests the next "Item #" for a NEW item, e.g. "P1-MO-0007" or
+// "NP-PO-0003". There is ONE independent sequence for each (project, office)
+// pair — see item_code_prefix()/stockapp_item_codes() in config/db.php.
+// Unlike next_document_number() below (a suggested, freely-editable text
+// default), this is the actual stored ItemCode: it is based on the highest
+// existing number for that prefix rather than a row count, so a deleted
+// item's number is never handed out again to a different item. An existing
+// item's number is NEVER regenerated — item_form.php leaves it alone even
+// when the item's office or project is corrected later, exactly like a SKU.
+function next_item_code($projectId, ?string $office): string {
+    $prefix = item_code_prefix($projectId, $office);
+    $stmt = db()->prepare('SELECT ItemCode FROM Items WHERE ItemCode LIKE ?');
+    $stmt->execute([$prefix . '-%']);
     $max = 0;
     foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $code) {
         if (preg_match('/^' . preg_quote($prefix, '/') . '-(\d+)$/', (string)$code, $m)) {
             $max = max($max, (int)$m[1]);
         }
     }
-    return $prefix . '-' . str_pad((string)($max + 1), 2, '0', STR_PAD_LEFT);
+    return $prefix . '-' . str_pad((string)($max + 1), 4, '0', STR_PAD_LEFT);
 }
 
 // Suggests the next document number for a new GRN/Stock Card, e.g.
