@@ -1,0 +1,13 @@
+# Block all direct HTTP access to this folder. The SQLite database file
+# lives here and must never be downloadable — it contains every stock
+# record plus the Users table (password hashes included). PHP itself still
+# reads/writes the file fine, since this only blocks requests that come in
+# through the web server.
+Require all denied
+
+# Fallback for older Apache (2.2 and earlier) that doesn't understand
+# "Require all denied" above.
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>

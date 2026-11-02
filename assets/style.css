@@ -1,0 +1,254 @@
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap');
+
+:root{
+  --ink:        #1B2621;
+  --ink-soft:   #52625A;
+  --paper:      #F5F6F3;
+  --panel:      #FFFFFF;
+  --line:       #DEE3DD;
+  --teal:       #0E5C56;
+  --teal-dark:  #0A413D;
+  --teal-tint:  #E4EFEC;
+  --amber:      #B5741E;
+  --amber-tint: #FBF0DE;
+  --red:        #A3352B;
+  --red-tint:   #FBEAE8;
+  --radius:     8px;
+}
+
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  margin:0;
+  font-family:'Public Sans', system-ui, sans-serif;
+  color:var(--ink);
+  background:var(--paper);
+  font-size:15px;
+  line-height:1.5;
+  /* Belt-and-suspenders: nothing on the page should be able to force the
+     whole viewport to scroll sideways on a phone — any element that's
+     genuinely wider than its container (a data table, a long unbroken
+     value) scrolls internally instead, per the rules below. */
+  overflow-x:hidden;
+}
+h1,h2,h3{
+  font-family:'Source Serif 4', Georgia, serif;
+  font-weight:700;
+  margin:0 0 4px;
+  color:var(--teal-dark);
+}
+a{color:var(--teal);text-decoration:none;}
+a:hover{text-decoration:underline;}
+
+.shell{display:flex;min-height:100vh;}
+
+/* Sidebar */
+.sidebar{
+  width:230px;
+  flex-shrink:0;
+  background:var(--teal-dark);
+  color:#EAF2F0;
+  display:flex;
+  flex-direction:column;
+  padding:22px 16px;
+  position:sticky;
+  top:0;
+  height:100vh;
+  overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:28px;padding:0 4px;}
+.brand-mark-logo{
+  width:40px;height:40px;object-fit:contain;
+  flex-shrink:0;
+}
+.brand-title{font-weight:700;font-size:15px;color:#fff;line-height:1.2;letter-spacing:.02em;}
+.brand-sub{font-size:11px;color:#9FBDB6;letter-spacing:.04em;text-transform:uppercase;margin-top:1px;}
+.sidebar nav{display:flex;flex-direction:column;gap:2px;}
+.sidebar nav a{
+  color:#CFE3DE;
+  padding:9px 12px;
+  border-radius:6px;
+  font-size:13.5px;
+  font-weight:500;
+}
+.sidebar nav a:hover{background:rgba(255,255,255,.08);text-decoration:none;color:#fff;}
+.sidebar nav a.active{background:var(--teal);color:#fff;}
+
+.sidebar-account{
+  margin-top:auto;
+  padding-top:14px;
+  border-top:1px solid rgba(255,255,255,.10);
+}
+.account-card{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:6px 6px;
+  border-radius:10px;
+}
+.account-avatar{
+  width:34px;height:34px;flex-shrink:0;
+  border-radius:50%;
+  background:var(--teal);
+  color:#fff;
+  display:flex;align-items:center;justify-content:center;
+}
+.account-avatar svg{width:17px;height:17px;}
+.account-meta{min-width:0;overflow:hidden;}
+.account-name{
+  font-size:13px;font-weight:600;color:#fff;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.account-role{font-size:11px;color:#9FBDB6;text-transform:uppercase;letter-spacing:.04em;margin-top:1px;}
+.account-actions{display:flex;gap:4px;margin-top:8px;}
+.account-action{
+  flex:1;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 6px;
+  border-radius:7px;
+  font-size:12px;font-weight:500;
+  color:#CFE3DE;
+  white-space:nowrap;
+}
+.account-action svg{width:14px;height:14px;flex-shrink:0;}
+.account-action:hover{background:rgba(255,255,255,.09);color:#fff;text-decoration:none;}
+
+/* Content */
+.content{flex:1;padding:32px 40px;max-width:1180px;}
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:22px;gap:16px;flex-wrap:wrap;}
+.page-head p{margin:2px 0 0;color:var(--ink-soft);font-size:13.5px;}
+
+.flash{
+  background:var(--teal-tint);
+  border:1px solid #BFDAD3;
+  color:var(--teal-dark);
+  padding:10px 14px;
+  border-radius:var(--radius);
+  margin-bottom:18px;
+  font-size:13.5px;
+}
+
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:26px;}
+.card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:16px 18px;
+}
+.card .label{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);font-weight:600;}
+.card .value{font-family:'Source Serif 4',serif;font-size:28px;font-weight:700;color:var(--teal-dark);margin-top:4px;}
+.card.warn .value{color:var(--amber);}
+.card.danger .value{color:var(--red);}
+
+/* Panels / tables */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:24px;}
+.panel-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.panel-head h2{font-size:16px;}
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+th,td{text-align:left;padding:10px 18px;border-bottom:1px solid var(--line);}
+th{background:#F1F3F0;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);font-weight:600;}
+tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:#FAFBF9;}
+td.num, th.num{text-align:right;font-variant-numeric:tabular-nums;}
+.muted{color:var(--ink-soft);}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:600;}
+.pill.low{background:var(--red-tint);color:var(--red);}
+.pill.ok{background:var(--teal-tint);color:var(--teal-dark);}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--teal);color:#fff;border:none;
+  padding:9px 16px;border-radius:6px;font-size:13.5px;font-weight:600;
+  cursor:pointer;text-decoration:none;
+}
+.btn:hover{background:var(--teal-dark);text-decoration:none;}
+.btn.secondary{background:var(--panel);color:var(--ink);border:1px solid var(--line);}
+.btn.secondary:hover{background:#F1F3F0;}
+.btn.danger{background:var(--red);}
+.btn.danger:hover{background:#7E2A22;}
+.btn.small{padding:5px 10px;font-size:12.5px;}
+
+/* Forms */
+form.stack{max-width:640px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em;}
+.field input, .field select, .field textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:14px;background:#fff;color:var(--ink);
+}
+.field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--teal);outline-offset:0;border-color:var(--teal);}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+.row4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;}
+.actions{display:flex;gap:10px;margin-top:22px;}
+
+/* Line-item table for receipts/releases */
+/* Wrapper scrolls horizontally on its own on narrow screens — the wider
+   item combo box (below) can push this table past the viewport width, and
+   the page body deliberately hides horizontal overflow everywhere else
+   (see body{overflow-x:hidden}), so without this the Quantity/Unit columns
+   would become unreachable on a small screen instead of just needing a
+   swipe/scroll to reach. */
+.line-table-wrap{overflow-x:auto;}
+.line-table th, .line-table td{padding:7px 10px;}
+.line-table input, .line-table select{padding:6px 8px;font-size:13px;}
+.line-table td.qty{width:110px;}
+/* Item combo box — wide enough that most item names (this list runs well
+   past 50 characters for some supply items) show in full rather than being
+   clipped by the browser's native <select> rendering. min-width (rather
+   than a hard width) still lets the column grow further if the table has
+   room, e.g. on a wide monitor. */
+.line-table td.id-col{width:440px;min-width:440px;}
+.line-table td.id-col select{width:100%;}
+.line-table td.remove{width:36px;text-align:center;}
+.line-table td.edit-col{width:70px;text-align:center;}
+.line-table .remove-row{background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;line-height:1;}
+.line-table .item-edit-link{font-size:12px;white-space:nowrap;}
+.line-table input[readonly]{background:#F1F3F0;color:var(--ink-soft);cursor:not-allowed;}
+.line-table input:invalid{border-color:var(--red);background:var(--red-tint);}
+.add-line{margin-top:8px;}
+
+.search-box{padding:8px 12px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;min-width:220px;}
+
+/* Read-only detail view (e.g. GRN details) */
+.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:18px 22px;}
+.detail-grid .label{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);font-weight:600;margin-bottom:4px;}
+.detail-grid .value{font-size:15px;font-weight:600;color:var(--ink);}
+
+@media (max-width: 860px){
+  .shell{flex-direction:column;}
+  .sidebar{width:100%;flex-direction:row;align-items:center;overflow-x:auto;position:static;height:auto;overflow-y:visible;}
+  .sidebar nav{flex-direction:row;}
+  .sidebar-account{margin-top:0;margin-left:auto;border-top:none;padding-top:0;display:flex;align-items:center;gap:10px;}
+  .account-actions{margin-top:0;}
+  .account-action span{display:none;}
+  .content{padding:20px;}
+  .detail-grid{grid-template-columns:1fr;}
+}
+
+/* Print — used by the Reports page so what comes out of the printer (or
+   "Print to PDF") is just the report itself: no sidebar, no on-screen-only
+   controls like office filters/tab buttons/the Print button, none of that.
+   Anything on-screen-only elsewhere in the app can opt out of printing the
+   same way by adding class="no-print". */
+@media print{
+  body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .sidebar, .no-print{display:none !important;}
+  .shell{display:block;}
+  .content{padding:0;max-width:none;}
+  /* No break-inside:avoid here — a report's panel wraps its whole table,
+     which usually runs longer than one printed page. Treating that as an
+     unbreakable block meant the browser couldn't start it on page 1 (not
+     enough room left below the title), so it pushed the entire panel to
+     page 2 and left page 1 showing only the heading. Individual rows still
+     avoid splitting mid-row, and the header repeats on every page (below). */
+  .panel{border:none;border-radius:0;box-shadow:none;margin-bottom:20px;}
+  .panel-head{padding:0 0 8px;border-bottom:2px solid var(--teal-dark);}
+  table{font-size:12px;}
+  th,td{padding:6px 8px;}
+  th{background:#F1F3F0 !important;}
+  thead{display:table-header-group;}
+  tr{page-break-inside:avoid;break-inside:avoid;}
+}

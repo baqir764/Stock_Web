@@ -1,0 +1,44 @@
+# Defense-in-depth on top of data/.htaccess and logs/.htaccess: even if one
+# of those per-folder rules gets skipped during an upload, no file with one
+# of these extensions is ever served directly, and folder listings are off
+# app-wide so a missing index.php page can't expose a raw file listing.
+Options -Indexes
+
+<FilesMatch "\.(sqlite|sqlite3|db|log)$">
+    Require all denied
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ---------------------------------------------------------------------------
+# Hide the .php file name from the address bar.
+#
+# Every page in this app is now linked to internally (see includes/header.php
+# and the individual pages) without its .php extension, e.g. "items" instead
+# of "items.php". These rules make that actually work:
+#
+#   1. Someone types/bookmarks the old .../items.php URL -> permanently
+#      redirected (301) to .../items, so the extension never lingers in the
+#      address bar even for old links.
+#   2. The browser's request for .../items is served by items.php behind the
+#      scenes -> the address bar keeps showing "items", the real file name
+#      is never exposed.
+#   3. /index and /index.php both collapse to the site root "/".
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Homepage: collapse /index and /index.php to this folder's root.
+    RewriteCond %{REQUEST_URI} ^(.*)/index(\.php)?$ [NC]
+    RewriteRule ^ %1/ [R=301,L]
+
+    # Any other literal .php request loses its extension (301 redirect).
+    RewriteCond %{THE_REQUEST} \s/(.+)\.php[\s?] [NC]
+    RewriteRule ^ /%1 [R=301,L]
+
+    # Internally serve foo.php when the browser asks for extension-less foo.
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME}\.php -f
+    RewriteRule ^(.+)$ $1.php [L,QSA]
+</IfModule>

@@ -1,0 +1,8 @@
+# Same reasoning as data/.htaccess — PHP error logs can contain file paths
+# and query snippets that shouldn't be exposed to the public.
+Require all denied
+
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>
